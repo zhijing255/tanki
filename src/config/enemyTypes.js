@@ -8,6 +8,7 @@ export const ENEMY_TYPES = {
     score: 100,
     speedMultiplier: 1,
     fireDelayMultiplier: 1,
+    preferredRole: 'base',
   },
   fast: {
     id: 'fast',
@@ -18,6 +19,7 @@ export const ENEMY_TYPES = {
     score: 150,
     speedMultiplier: 1.35,
     fireDelayMultiplier: 0.85,
+    preferredRole: 'hunter',
   },
   heavy: {
     id: 'heavy',
@@ -28,6 +30,7 @@ export const ENEMY_TYPES = {
     score: 250,
     speedMultiplier: 0.75,
     fireDelayMultiplier: 1.2,
+    preferredRole: 'base',
   },
   sniper: {
     id: 'sniper',
@@ -38,6 +41,7 @@ export const ENEMY_TYPES = {
     score: 200,
     speedMultiplier: 0.85,
     fireDelayMultiplier: 0.65,
+    preferredRole: 'hunter',
   },
 };
 

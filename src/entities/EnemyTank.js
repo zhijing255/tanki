@@ -2,6 +2,12 @@ import Phaser from 'phaser';
 import { ENEMY_TYPES } from '../config/enemyTypes.js';
 
 const DIRECTIONS = ['up', 'down', 'left', 'right'];
+const OPPOSITE_DIRECTION = {
+  up: 'down',
+  down: 'up',
+  left: 'right',
+  right: 'left',
+};
 
 export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, texture, frame) {
@@ -11,6 +17,8 @@ export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
     this.nextTurnTime = 0;
     this.nextFireTime = 0;
     this.fireRequested = false;
+    this.previousDirection = null;
+    this.lastDirectionChangeTime = 0;
     this.turnDelay = [900, 1800];
     this.initialFireDelay = [3000, 5000];
     this.fireDelay = [1300, 2300];
@@ -28,6 +36,8 @@ export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
     this.initialFireDelay = config.initialFireDelay ?? this.initialFireDelay;
     this.fireDelay = config.fireDelay ?? this.fireDelay;
     this.fireRequested = false;
+    this.previousDirection = null;
+    this.lastDirectionChangeTime = 0;
     this.enemyType = typeConfig.id;
     this.health = typeConfig.health;
     this.scoreValue = typeConfig.score;
@@ -54,11 +64,47 @@ export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
-    const nextDirection = Phaser.Utils.Array.GetRandom(candidates);
+    const sceneChoice = this.scene.chooseEnemyDirection?.(
+      this,
+      time,
+      candidates
+    );
+    const reverseDirection = OPPOSITE_DIRECTION[this.direction];
+    const nonReverseCandidates = candidates.filter(
+      (direction) => direction !== reverseDirection
+    );
+    let nextDirection = sceneChoice;
+
+    if (
+      nextDirection === reverseDirection &&
+      nonReverseCandidates.length > 0
+    ) {
+      nextDirection = null;
+    }
+
+    if (!nextDirection || !candidates.includes(nextDirection)) {
+      const preferredDirections = nonReverseCandidates.filter(
+        (direction) => this.scene.isDirectionOpen?.(this, direction) !== false
+      );
+
+      if (preferredDirections.length > 0) {
+        nextDirection = Phaser.Utils.Array.GetRandom(preferredDirections);
+      } else if (nonReverseCandidates.length > 0) {
+        nextDirection = Phaser.Utils.Array.GetRandom(nonReverseCandidates);
+      } else {
+        nextDirection = Phaser.Utils.Array.GetRandom(candidates);
+      }
+    }
+
     this.setDirection(nextDirection, time);
   }
 
   setDirection(direction, time) {
+    if (direction !== this.direction) {
+      this.previousDirection = this.direction;
+      this.lastDirectionChangeTime = time;
+    }
+
     this.direction = direction;
     this.nextTurnTime = time + Phaser.Math.Between(...this.turnDelay);
 

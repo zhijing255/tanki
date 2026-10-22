@@ -19,6 +19,7 @@ export default class BootScene extends Phaser.Scene {
     this.createPowerUpTexture('powerup-shield', '#0891b2', 'shield');
     this.createPowerUpTexture('powerup-speed', '#f59e0b', 'speed');
     this.createPowerUpTexture('powerup-triple', '#8b5cf6', 'triple');
+    this.createPowerUpTexture('powerup-repair', '#16a34a', 'repair');
 
     this.scene.start('MenuScene');
   }
@@ -153,6 +154,11 @@ export default class BootScene extends Phaser.Scene {
       context.lineTo(15, 12);
       context.closePath();
       context.fill();
+    }
+
+    if (icon === 'repair') {
+      context.fillRect(12, 6, 4, 16);
+      context.fillRect(6, 12, 16, 4);
     }
 
     if (icon === 'triple') {

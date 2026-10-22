@@ -125,6 +125,7 @@ export const LEVELS = [
     grid: createLevelOneGrid(),
     enemyTotal: 10,
     maxActiveEnemies: 3,
+    baseHealth: 3,
     enemy: {
       speed: 110,
       turnDelay: [900, 1800],
@@ -138,6 +139,7 @@ export const LEVELS = [
     grid: createLevelTwoGrid(),
     enemyTotal: 12,
     maxActiveEnemies: 4,
+    baseHealth: 4,
     enemy: {
       speed: 135,
       turnDelay: [700, 1400],
@@ -151,6 +153,7 @@ export const LEVELS = [
     grid: createLevelThreeGrid(),
     enemyTotal: 15,
     maxActiveEnemies: 5,
+    baseHealth: 5,
     enemy: {
       speed: 160,
       turnDelay: [550, 1100],

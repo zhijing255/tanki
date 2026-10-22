@@ -59,10 +59,14 @@ export default class GameScene extends Phaser.Scene {
     this.enemiesToSpawn = this.enemyTotal;
     this.enemiesDefeated = 0;
     this.lives = PLAYER_LIVES;
+    this.maxBaseHealth = this.levelConfig.baseHealth;
+    this.baseHealth = this.maxBaseHealth;
     this.baseAlive = true;
     this.gameOver = false;
     this.isPaused = false;
     this.invulnerableUntil = 0;
+    this.aiReadyAt = this.time.now + 6000;
+    this.siegeSlotIndex = 0;
     this.respawnPending = false;
 
     this.physics.world.setBounds(
@@ -328,7 +332,9 @@ export default class GameScene extends Phaser.Scene {
 
   updateHud(time = 0) {
     const remainingEnemies = this.enemyTotal - this.enemiesDefeated;
-    const baseStatus = this.baseAlive ? '安全' : '失守';
+    const baseStatus = this.baseAlive
+      ? `基地: ${this.baseHealth}/${this.maxBaseHealth}`
+      : '基地: 失守';
     const activeEffects = [];
 
     if (this.shieldUntil > time) {
@@ -344,8 +350,18 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.hudText.setText(
-      `关卡: ${this.levelIndex + 1}/${LEVELS.length}　分数: ${this.score}　敌人数: ${remainingEnemies}　生命: ${this.lives}　基地: ${baseStatus}　子弹: ${this.activePlayerBullets}/${this.playerBulletLimit}`
+      `关卡: ${this.levelIndex + 1}/${LEVELS.length}　分数: ${this.score}　敌人数: ${remainingEnemies}　生命: ${this.lives}　${baseStatus}　子弹: ${this.activePlayerBullets}/${this.playerBulletLimit}`
     );
+
+    if (this.baseHealth === 1) {
+      this.hudText.setColor('#f87171');
+    } else if (
+      this.baseHealth <= Math.ceil(this.maxBaseHealth / 2)
+    ) {
+      this.hudText.setColor('#fbbf24');
+    } else {
+      this.hudText.setColor('#cbd5e1');
+    }
     this.powerupHud.setText(
       activeEffects.length > 0 ? activeEffects.join('　') : '道具: 无'
     );
@@ -358,11 +374,13 @@ export default class GameScene extends Phaser.Scene {
 
     const roll = Math.random();
     const texture =
-      roll < 0.4
+      roll < 0.35
         ? 'powerup-shield'
-        : roll < 0.7
+        : roll < 0.6
           ? 'powerup-speed'
-          : 'powerup-triple';
+          : roll < 0.8
+            ? 'powerup-triple'
+            : 'powerup-repair';
     const powerup = this.powerups.create(x, y, texture);
 
     if (!powerup) {
@@ -406,6 +424,12 @@ export default class GameScene extends Phaser.Scene {
     if (texture === 'powerup-triple') {
       this.tripleUntil = this.time.now + POWERUP_DURATION;
       this.playerBulletLimit = 3;
+    }
+
+    if (texture === 'powerup-repair' && this.baseAlive) {
+      this.baseHealth = this.maxBaseHealth;
+      this.base.clearTint();
+      this.createExplosion(this.base.x, this.base.y, 0x4ade80);
     }
   }
 
@@ -472,6 +496,10 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
+    enemy.role = type.preferredRole;
+    enemy.siegeSlot = this.siegeSlotIndex % 4;
+    this.siegeSlotIndex += 1;
+
     enemy.spawn(
       point.x,
       point.y,
@@ -522,10 +550,28 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
+    const playerHasLine = this.hasClearLine(enemy, this.player);
+    const baseHasLine = this.hasClearLine(enemy, this.base);
+
+    if (
+      enemy.role === 'base' &&
+      this.time.now < this.aiReadyAt &&
+      baseHasLine &&
+      !playerHasLine
+    ) {
+      return;
+    }
+
     let angle = enemy.angle;
 
     if (enemy.enemyType === 'sniper') {
       angle = this.getSniperAngle(enemy);
+      enemy.setAngle(angle);
+    } else if (this.hasClearLine(enemy, this.player)) {
+      angle = this.getAimAngle(enemy, this.player);
+      enemy.setAngle(angle);
+    } else if (this.hasClearLine(enemy, this.base)) {
+      angle = this.getAimAngle(enemy, this.base);
       enemy.setAngle(angle);
     }
     const x = enemy.x + Math.cos(Phaser.Math.DegToRad(angle - 90)) * 20;
@@ -580,12 +626,44 @@ export default class GameScene extends Phaser.Scene {
     const wasEnemyBullet = bullet.owner === 'enemy';
     this.destroyBullet(bullet);
 
-    if (wasEnemyBullet && this.baseAlive) {
+    if (wasEnemyBullet) {
+      this.damageBase();
+    }
+  }
+
+  damageBase() {
+    if (!this.baseAlive || this.gameOver) {
+      return;
+    }
+
+    this.baseHealth -= 1;
+    this.createExplosion(this.base.x, this.base.y, 0xf97316);
+    this.updateBaseHealthVisual();
+
+    if (this.baseHealth <= 0) {
+      this.baseHealth = 0;
       this.baseAlive = false;
-      this.createExplosion(this.base.x, this.base.y, 0xef4444);
-      this.base.setTint(0xef4444);
+      this.updateBaseHealthVisual();
       this.endGame(false, '基地被摧毁');
     }
+  }
+
+  updateBaseHealthVisual() {
+    if (!this.base) {
+      return;
+    }
+
+    if (this.baseHealth <= 0 || this.baseHealth === 1) {
+      this.base.setTint(0xef4444);
+      return;
+    }
+
+    if (this.baseHealth <= Math.ceil(this.maxBaseHealth / 2)) {
+      this.base.setTint(0xf59e0b);
+      return;
+    }
+
+    this.base.clearTint();
   }
 
   hitEnemy(bullet, enemy) {
@@ -690,6 +768,428 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  getActorCell(actor) {
+    let row = Math.floor((actor.y - HUD_HEIGHT) / TILE_SIZE);
+    let column = Math.floor(actor.x / TILE_SIZE);
+
+    if (this.isOpenCell(row, column, true)) {
+      return { row, column };
+    }
+
+    const blockedDirectionOffsets = {
+      up: [1, 0],
+      down: [-1, 0],
+      left: [0, 1],
+      right: [0, -1],
+    };
+
+    for (const direction of ['up', 'down', 'left', 'right']) {
+      if (!actor.body?.blocked?.[direction]) {
+        continue;
+      }
+
+      const [rowOffset, columnOffset] =
+        blockedDirectionOffsets[direction];
+      const nextRow = row + rowOffset;
+      const nextColumn = column + columnOffset;
+
+      if (this.isOpenCell(nextRow, nextColumn, true)) {
+        return { row: nextRow, column: nextColumn };
+      }
+    }
+
+    const fallbackOffsets = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+
+    for (const [rowOffset, columnOffset] of fallbackOffsets) {
+      const nextRow = row + rowOffset;
+      const nextColumn = column + columnOffset;
+
+      if (this.isOpenCell(nextRow, nextColumn, true)) {
+        return { row: nextRow, column: nextColumn };
+      }
+    }
+
+    return { row, column };
+  }
+
+  getCellToken(row, column) {
+    if (
+      row < 0 ||
+      row >= LEVEL_HEIGHT ||
+      column < 0 ||
+      column >= LEVEL_WIDTH
+    ) {
+      return LEVEL_TOKENS.wall;
+    }
+
+    return this.levelGrid[row][column];
+  }
+
+  isOpenCell(row, column, allowBase = false) {
+    const token = this.getCellToken(row, column);
+
+    if (
+      token === LEVEL_TOKENS.wall ||
+      token === LEVEL_TOKENS.steel ||
+      (!allowBase && token === LEVEL_TOKENS.base)
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  directionBetween(fromRow, fromColumn, toRow, toColumn) {
+    if (toRow < fromRow) return 'up';
+    if (toRow > fromRow) return 'down';
+    if (toColumn < fromColumn) return 'left';
+    if (toColumn > fromColumn) return 'right';
+    return null;
+  }
+
+  hasClearLine(from, to) {
+    const fromCell = this.getActorCell(from);
+    const toCell = this.getActorCell(to);
+
+    if (
+      fromCell.row !== toCell.row &&
+      fromCell.column !== toCell.column
+    ) {
+      return false;
+    }
+
+    const rowStep = Math.sign(toCell.row - fromCell.row);
+    const columnStep = Math.sign(toCell.column - fromCell.column);
+    let row = fromCell.row + rowStep;
+    let column = fromCell.column + columnStep;
+
+    while (row !== toCell.row || column !== toCell.column) {
+      if (!this.isOpenCell(row, column, false)) {
+        return false;
+      }
+
+      row += rowStep;
+      column += columnStep;
+    }
+
+    return true;
+  }
+
+  findDirectionToward(enemy, target, allowBase = false) {
+    const start = this.getActorCell(enemy);
+    const goal = this.getActorCell(target);
+    const totalCells = LEVEL_WIDTH * LEVEL_HEIGHT;
+    const start_index = start.row * LEVEL_WIDTH + start.column;
+    const goal_index = goal.row * LEVEL_WIDTH + goal.column;
+
+    if (
+      start_index < 0 ||
+      start_index >= totalCells ||
+      goal_index < 0 ||
+      goal_index >= totalCells ||
+      start_index === goal_index
+    ) {
+      return null;
+    }
+
+    const visited = new Uint8Array(totalCells);
+    const firstDirections = new Array(totalCells).fill(null);
+    const queue = [start_index];
+    let cursor = 0;
+    visited[start_index] = 1;
+
+    const offsets = [
+      ['up', -1, 0],
+      ['down', 1, 0],
+      ['left', 0, -1],
+      ['right', 0, 1],
+    ];
+
+    while (cursor < queue.length) {
+      const currentIndex = queue[cursor];
+      cursor += 1;
+      const currentRow = Math.floor(currentIndex / LEVEL_WIDTH);
+      const currentColumn = currentIndex % LEVEL_WIDTH;
+
+      for (const [direction, rowOffset, columnOffset] of offsets) {
+        const nextRow = currentRow + rowOffset;
+        const nextColumn = currentColumn + columnOffset;
+
+        if (
+          nextRow < 0 ||
+          nextRow >= LEVEL_HEIGHT ||
+          nextColumn < 0 ||
+          nextColumn >= LEVEL_WIDTH
+        ) {
+          continue;
+        }
+
+        if (!this.isOpenCell(nextRow, nextColumn, allowBase)) {
+          continue;
+        }
+
+        const nextIndex = nextRow * LEVEL_WIDTH + nextColumn;
+
+        if (visited[nextIndex]) {
+          continue;
+        }
+
+        visited[nextIndex] = 1;
+        firstDirections[nextIndex] =
+          firstDirections[currentIndex] ?? direction;
+        queue.push(nextIndex);
+
+        if (nextIndex === goal_index) {
+          return firstDirections[nextIndex];
+        }
+      }
+    }
+
+    return null;
+  }
+
+  isDirectionOpen(enemy, direction) {
+    const cell = this.getActorCell(enemy);
+    const offsets = {
+      up: [-1, 0],
+      down: [1, 0],
+      left: [0, -1],
+      right: [0, 1],
+    };
+    const [rowOffset, columnOffset] = offsets[direction];
+
+    return this.isOpenCell(
+      cell.row + rowOffset,
+      cell.column + columnOffset,
+      true
+    );
+  }
+
+  getCellCenter(row, column) {
+    return {
+      x: column * TILE_SIZE + TILE_SIZE / 2,
+      y: HUD_HEIGHT + row * TILE_SIZE + TILE_SIZE / 2,
+    };
+  }
+
+  getBaseApproachTargets() {
+    const baseCell = this.getActorCell(this.base);
+    const offsets = [
+      [0, -2],
+      [0, 2],
+      [-2, 0],
+      [0, 0],
+    ];
+
+    return offsets
+      .map(([rowOffset, columnOffset]) => {
+        const row = baseCell.row + rowOffset;
+        const column = baseCell.column + columnOffset;
+
+        return this.isOpenCell(row, column, true)
+          ? this.getCellCenter(row, column)
+          : null;
+      })
+      .filter(Boolean);
+  }
+
+  getSiegeTarget(enemy) {
+    const targets = this.getBaseApproachTargets();
+
+    if (targets.length === 0) {
+      return this.base;
+    }
+
+    return targets[enemy.siegeSlot % targets.length];
+  }
+
+  findSeparationDirection(enemy, candidates) {
+    let nearestEnemy = null;
+    let nearestDistance = Infinity;
+
+    this.enemies.getChildren().forEach((otherEnemy) => {
+      if (!otherEnemy.active || otherEnemy === enemy) {
+        return;
+      }
+
+      const distance = Phaser.Math.Distance.Between(
+        enemy.x,
+        enemy.y,
+        otherEnemy.x,
+        otherEnemy.y
+      );
+
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestEnemy = otherEnemy;
+      }
+    });
+
+    if (!nearestEnemy || nearestDistance >= 44) {
+      return null;
+    }
+
+    const escapeDirections = candidates.filter((direction) => {
+      if (!this.isDirectionOpen(enemy, direction)) {
+        return false;
+      }
+
+      const cell = this.getActorCell(enemy);
+      const offsets = {
+        up: [-1, 0],
+        down: [1, 0],
+        left: [0, -1],
+        right: [0, 1],
+      };
+      const [rowOffset, columnOffset] = offsets[direction];
+      const nextCenter = this.getCellCenter(
+        cell.row + rowOffset,
+        cell.column + columnOffset
+      );
+      const nextDistance = Phaser.Math.Distance.Between(
+        nextCenter.x,
+        nextCenter.y,
+        nearestEnemy.x,
+        nearestEnemy.y
+      );
+
+      return nextDistance > nearestDistance + 6;
+    });
+
+    if (escapeDirections.length > 0 && Math.random() < 0.75) {
+      return Phaser.Utils.Array.GetRandom(escapeDirections);
+    }
+
+    return null;
+  }
+  chooseEnemyDirection(enemy, time, candidates) {
+    if (!this.player || !this.base) {
+      return null;
+    }
+
+    const separationDirection = this.findSeparationDirection(
+      enemy,
+      candidates
+    );
+
+    if (separationDirection) {
+      return separationDirection;
+    }
+
+    if (this.hasClearLine(enemy, this.player)) {
+      const playerCell = this.getActorCell(this.player);
+      const enemyCell = this.getActorCell(enemy);
+      return this.directionBetween(
+        enemyCell.row,
+        enemyCell.column,
+        playerCell.row,
+        playerCell.column
+      );
+    }
+
+    const playerDistance = Phaser.Math.Distance.Between(
+      enemy.x,
+      enemy.y,
+      this.player.x,
+      this.player.y
+    );
+    const towardPlayer = this.findDirectionToward(
+      enemy,
+      this.player,
+      false
+    );
+
+    if (
+      enemy.role === 'hunter' &&
+      towardPlayer &&
+      candidates.includes(towardPlayer)
+    ) {
+      return towardPlayer;
+    }
+
+    if (
+      enemy.role === 'base' &&
+      time < this.aiReadyAt
+    ) {
+      if (
+        playerDistance <= 220 &&
+        towardPlayer &&
+        candidates.includes(towardPlayer)
+      ) {
+        return towardPlayer;
+      }
+
+      const openCandidates = candidates.filter((direction) =>
+        this.isDirectionOpen(enemy, direction)
+      );
+
+      return openCandidates.length > 0
+        ? Phaser.Utils.Array.GetRandom(openCandidates)
+        : null;
+    }
+
+    if (this.hasClearLine(enemy, this.base)) {
+      const baseCell = this.getActorCell(this.base);
+      const enemyCell = this.getActorCell(enemy);
+      return this.directionBetween(
+        enemyCell.row,
+        enemyCell.column,
+        baseCell.row,
+        baseCell.column
+      );
+    }
+
+    const siegeTarget = this.getSiegeTarget(enemy);
+    const targetCell = this.getActorCell(siegeTarget);
+    const targetToken = this.getCellToken(
+      targetCell.row,
+      targetCell.column
+    );
+    const towardSiege = this.findDirectionToward(
+      enemy,
+      siegeTarget,
+      targetToken === LEVEL_TOKENS.base
+    );
+
+    if (towardSiege && candidates.includes(towardSiege)) {
+      return towardSiege;
+    }
+
+    if (towardPlayer && candidates.includes(towardPlayer)) {
+      return towardPlayer;
+    }
+
+    const towardBase = this.findDirectionToward(enemy, this.base, true);
+
+    if (towardBase && candidates.includes(towardBase)) {
+      return towardBase;
+    }
+
+    const openCandidates = candidates.filter((direction) =>
+      this.isDirectionOpen(enemy, direction)
+    );
+
+    if (openCandidates.length > 0) {
+      return Phaser.Utils.Array.GetRandom(openCandidates);
+    }
+
+    return null;
+  }
+  getAimAngle(from, to) {
+    const deltaX = to.x - from.x;
+    const deltaY = to.y - from.y;
+
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      return deltaX > 0 ? 90 : -90;
+    }
+
+    return deltaY > 0 ? 180 : 0;
+  }
   turnEnemyAfterCollision(enemy) {
     if (enemy.active) {
       enemy.turnAfterCollision(this.time.now);
