@@ -10,18 +10,25 @@ export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
     this.nextTurnTime = 0;
     this.nextFireTime = 0;
     this.fireRequested = false;
+    this.turnDelay = [900, 1800];
+    this.initialFireDelay = [3000, 5000];
+    this.fireDelay = [1300, 2300];
   }
 
-  spawn(x, y, time) {
+  spawn(x, y, time, config = {}) {
     this.setActive(true).setVisible(true);
     this.setDepth(9);
     this.body.enable = true;
     this.body.reset(x, y);
     this.body.setSize(28, 28).setOffset(2, 2);
     this.setCollideWorldBounds(true);
+    this.speed = config.speed ?? this.speed;
+    this.turnDelay = config.turnDelay ?? this.turnDelay;
+    this.initialFireDelay = config.initialFireDelay ?? this.initialFireDelay;
+    this.fireDelay = config.fireDelay ?? this.fireDelay;
     this.fireRequested = false;
     this.chooseDirection(time, false);
-    this.nextFireTime = time + Phaser.Math.Between(3000, 5000);
+    this.nextFireTime = time + Phaser.Math.Between(...this.initialFireDelay);
     return this;
   }
 
@@ -48,7 +55,7 @@ export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
 
   setDirection(direction, time) {
     this.direction = direction;
-    this.nextTurnTime = time + Phaser.Math.Between(900, 1800);
+    this.nextTurnTime = time + Phaser.Math.Between(...this.turnDelay);
 
     const angleByDirection = {
       up: 0,
@@ -90,7 +97,7 @@ export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
 
     if (time >= this.nextFireTime) {
       this.fireRequested = true;
-      this.nextFireTime = time + Phaser.Math.Between(1300, 2300);
+      this.nextFireTime = time + Phaser.Math.Between(...this.fireDelay);
     }
   }
 }

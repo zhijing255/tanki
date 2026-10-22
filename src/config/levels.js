@@ -8,7 +8,7 @@ const PLAYER = 'P';
 const BASE = 'B';
 const ENEMY = 'E';
 
-function createLevelGrid() {
+function createEmptyGrid() {
   const grid = Array.from({ length: LEVEL_HEIGHT }, () =>
     Array.from({ length: LEVEL_WIDTH }, () => EMPTY)
   );
@@ -23,35 +23,142 @@ function createLevelGrid() {
     grid[y][LEVEL_WIDTH - 1] = WALL;
   }
 
-  const fill = (x, y, width, height, value) => {
-    for (let row = y; row < y + height; row += 1) {
-      for (let column = x; column < x + width; column += 1) {
-        grid[row][column] = value;
-      }
+  return grid;
+}
+
+function fill(grid, x, y, width, height, value) {
+  for (let row = y; row < y + height; row += 1) {
+    for (let column = x; column < x + width; column += 1) {
+      grid[row][column] = value;
     }
-  };
+  }
+}
 
-  fill(5, 3, 4, 2, WALL);
-  fill(16, 3, 4, 2, WALL);
-  fill(9, 5, 7, 1, STEEL);
-  fill(3, 8, 5, 1, WALL);
-  fill(17, 8, 5, 1, WALL);
-  fill(10, 9, 5, 3, WALL);
-  fill(4, 12, 5, 2, WALL);
-  fill(16, 12, 5, 2, WALL);
-  fill(8, 14, 3, 1, STEEL);
-  fill(14, 14, 3, 1, STEEL);
-
+function finalizeGrid(grid, enemySpawns) {
   grid[16][2] = PLAYER;
   grid[16][12] = BASE;
-  grid[1][23] = ENEMY;
-  grid[1][12] = ENEMY;
-  grid[1][1] = ENEMY;
+
+  enemySpawns.forEach(([x, y]) => {
+    grid[y][x] = ENEMY;
+  });
 
   return grid.map((row) => row.join(''));
 }
 
-export const LEVEL_GRID = createLevelGrid();
+function createLevelOneGrid() {
+  const grid = createEmptyGrid();
+
+  fill(grid, 5, 3, 4, 2, WALL);
+  fill(grid, 16, 3, 4, 2, WALL);
+  fill(grid, 9, 5, 7, 1, STEEL);
+  fill(grid, 3, 8, 5, 1, WALL);
+  fill(grid, 17, 8, 5, 1, WALL);
+  fill(grid, 10, 9, 5, 3, WALL);
+  fill(grid, 4, 12, 5, 2, WALL);
+  fill(grid, 16, 12, 5, 2, WALL);
+  fill(grid, 8, 14, 3, 1, STEEL);
+  fill(grid, 14, 14, 3, 1, STEEL);
+
+  return finalizeGrid(grid, [
+    [1, 1],
+    [12, 1],
+    [23, 1],
+  ]);
+}
+
+function createLevelTwoGrid() {
+  const grid = createEmptyGrid();
+
+  fill(grid, 4, 3, 5, 2, WALL);
+  fill(grid, 16, 3, 5, 2, WALL);
+  fill(grid, 2, 7, 6, 1, WALL);
+  fill(grid, 17, 7, 6, 1, WALL);
+  fill(grid, 9, 6, 2, 4, STEEL);
+  fill(grid, 14, 6, 2, 4, STEEL);
+  fill(grid, 4, 11, 5, 2, WALL);
+  fill(grid, 16, 11, 5, 2, WALL);
+  fill(grid, 10, 13, 5, 1, STEEL);
+  fill(grid, 8, 15, 3, 1, WALL);
+  fill(grid, 14, 15, 3, 1, WALL);
+
+  return finalizeGrid(grid, [
+    [1, 1],
+    [6, 1],
+    [12, 1],
+    [17, 1],
+    [23, 1],
+    [1, 3],
+  ]);
+}
+
+function createLevelThreeGrid() {
+  const grid = createEmptyGrid();
+
+  fill(grid, 3, 3, 4, 2, WALL);
+  fill(grid, 18, 3, 4, 2, WALL);
+  fill(grid, 8, 3, 2, 3, STEEL);
+  fill(grid, 15, 3, 2, 3, STEEL);
+  fill(grid, 2, 7, 7, 1, WALL);
+  fill(grid, 16, 7, 7, 1, WALL);
+  fill(grid, 10, 7, 5, 4, WALL);
+  fill(grid, 4, 10, 4, 2, STEEL);
+  fill(grid, 17, 10, 4, 2, STEEL);
+  fill(grid, 3, 13, 5, 2, WALL);
+  fill(grid, 17, 13, 5, 2, WALL);
+  fill(grid, 9, 15, 3, 1, STEEL);
+  fill(grid, 13, 15, 3, 1, STEEL);
+
+  return finalizeGrid(grid, [
+    [1, 1],
+    [6, 1],
+    [12, 1],
+    [18, 1],
+    [23, 1],
+    [1, 3],
+    [23, 3],
+  ]);
+}
+
+export const LEVELS = [
+  {
+    name: '边境防线',
+    grid: createLevelOneGrid(),
+    enemyTotal: 10,
+    maxActiveEnemies: 3,
+    enemy: {
+      speed: 110,
+      turnDelay: [900, 1800],
+      initialFireDelay: [3000, 5000],
+      fireDelay: [1300, 2300],
+    },
+  },
+  {
+    name: '钢铁走廊',
+    grid: createLevelTwoGrid(),
+    enemyTotal: 12,
+    maxActiveEnemies: 4,
+    enemy: {
+      speed: 135,
+      turnDelay: [700, 1400],
+      initialFireDelay: [2400, 4000],
+      fireDelay: [950, 1700],
+    },
+  },
+  {
+    name: '核心要塞',
+    grid: createLevelThreeGrid(),
+    enemyTotal: 15,
+    maxActiveEnemies: 5,
+    enemy: {
+      speed: 160,
+      turnDelay: [550, 1100],
+      initialFireDelay: [2000, 3400],
+      fireDelay: [750, 1400],
+    },
+  },
+];
+
+export const LEVEL_GRID = LEVELS[0].grid;
 
 export const LEVEL_TOKENS = {
   wall: WALL,

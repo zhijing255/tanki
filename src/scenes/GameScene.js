@@ -6,7 +6,7 @@ import {
   TILE_SIZE,
 } from '../config/game.js';
 import {
-  LEVEL_GRID,
+  LEVELS,
   LEVEL_HEIGHT,
   LEVEL_TOKENS,
   LEVEL_WIDTH,
@@ -22,8 +22,6 @@ const POWERUP_LIFETIME = 10000;
 const POWERUP_DROP_CHANCE = 0.3;
 const POWERED_PLAYER_SPEED = 230;
 const PLAYER_FIRE_COOLDOWN = 180;
-const ENEMY_TOTAL = 10;
-const MAX_ACTIVE_ENEMIES = 3;
 const PLAYER_LIVES = 3;
 
 export default class GameScene extends Phaser.Scene {
@@ -31,10 +29,21 @@ export default class GameScene extends Phaser.Scene {
     super('GameScene');
   }
 
+  init(data = {}) {
+    this.levelIndex = Number(data.levelIndex) || 0;
+    this.initialScore = Number(data.score) || 0;
+    this.levelStartScore =
+      Number(data.levelStartScore) || this.initialScore;
+  }
+
   create() {
+    this.levelConfig = LEVELS[this.levelIndex] ?? LEVELS[0];
+    this.levelGrid = this.levelConfig.grid;
+    this.enemyTotal = this.levelConfig.enemyTotal;
+    this.maxActiveEnemies = this.levelConfig.maxActiveEnemies;
     this.activePlayerBullets = 0;
     this.lastPlayerFireTime = 0;
-    this.score = 0;
+    this.score = this.initialScore;
     this.scoreCarry = 0;
     this.highScore = 0;
     this.playerSpeed = PLAYER_SPEED;
@@ -42,13 +51,14 @@ export default class GameScene extends Phaser.Scene {
     this.shieldUntil = 0;
     this.speedUntil = 0;
     this.tripleUntil = 0;
-    this.enemiesToSpawn = ENEMY_TOTAL;
+    this.enemiesToSpawn = this.enemyTotal;
     this.enemiesDefeated = 0;
     this.lives = PLAYER_LIVES;
     this.baseAlive = true;
     this.gameOver = false;
     this.isPaused = false;
     this.invulnerableUntil = 0;
+    this.respawnPending = false;
 
     this.physics.world.setBounds(
       0,
@@ -70,7 +80,7 @@ export default class GameScene extends Phaser.Scene {
     this.powerups = this.physics.add.group();
     this.enemies = this.physics.add.group({
       classType: EnemyTank,
-      maxSize: ENEMY_TOTAL,
+      maxSize: this.enemyTotal,
     });
     this.spawnPoints = [];
 
@@ -81,7 +91,7 @@ export default class GameScene extends Phaser.Scene {
     this.createInput();
     this.createHud();
 
-    for (let index = 0; index < MAX_ACTIVE_ENEMIES; index += 1) {
+    for (let index = 0; index < this.maxActiveEnemies; index += 1) {
       this.spawnEnemy();
     }
 
@@ -117,7 +127,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   createLevel() {
-    LEVEL_GRID.forEach((row, rowIndex) => {
+    this.levelGrid.forEach((row, rowIndex) => {
       row.split('').forEach((token, columnIndex) => {
         const x = columnIndex * TILE_SIZE + TILE_SIZE / 2;
         const y = HUD_HEIGHT + rowIndex * TILE_SIZE + TILE_SIZE / 2;
@@ -259,6 +269,7 @@ export default class GameScene extends Phaser.Scene {
       this.scene.start('MenuScene')
     );
 
+
   }
 
   createHud() {
@@ -302,7 +313,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateHud(time = 0) {
-    const remainingEnemies = ENEMY_TOTAL - this.enemiesDefeated;
+    const remainingEnemies = this.enemyTotal - this.enemiesDefeated;
     const baseStatus = this.baseAlive ? '安全' : '失守';
     const activeEffects = [];
 
@@ -319,7 +330,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.hudText.setText(
-      `分数: ${this.score}　敌人数: ${remainingEnemies}　生命: ${this.lives}　基地: ${baseStatus}　子弹: ${this.activePlayerBullets}/${this.playerBulletLimit}`
+      `关卡: ${this.levelIndex + 1}/${LEVELS.length}　分数: ${this.score}　敌人数: ${remainingEnemies}　生命: ${this.lives}　基地: ${baseStatus}　子弹: ${this.activePlayerBullets}/${this.playerBulletLimit}`
     );
     this.powerupHud.setText(
       activeEffects.length > 0 ? activeEffects.join('　') : '道具: 无'
@@ -413,7 +424,7 @@ export default class GameScene extends Phaser.Scene {
       this.gameOver ||
       this.isPaused ||
       this.enemiesToSpawn <= 0 ||
-      this.enemies.countActive(true) >= MAX_ACTIVE_ENEMIES
+      this.enemies.countActive(true) >= this.maxActiveEnemies
     ) {
       return;
     }
@@ -433,7 +444,7 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
-    enemy.spawn(point.x, point.y, this.time.now);
+    enemy.spawn(point.x, point.y, this.time.now, this.levelConfig.enemy);
     point.used = true;
     point.marker.setVisible(false);
     this.enemiesToSpawn -= 1;
@@ -549,12 +560,12 @@ export default class GameScene extends Phaser.Scene {
     this.enemiesDefeated += 1;
     this.addScore(100);
 
-    if (this.enemiesDefeated < ENEMY_TOTAL) {
+    if (this.enemiesDefeated < this.enemyTotal) {
       this.spawnPowerUp(dropX, dropY);
     }
 
     if (
-      this.enemiesDefeated >= ENEMY_TOTAL &&
+      this.enemiesDefeated >= this.enemyTotal &&
       this.enemiesToSpawn === 0 &&
       this.enemies.countActive(true) === 0
     ) {
@@ -585,10 +596,26 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.respawnPlayer();
+    this.schedulePlayerRespawn();
+  }
+
+  schedulePlayerRespawn() {
+    if (this.respawnPending || this.gameOver) {
+      return;
+    }
+
+    this.respawnPending = true;
+    this.invulnerableUntil = this.time.now + 2000;
+
+    this.time.delayedCall(0, () => {
+      if (!this.gameOver) {
+        this.respawnPlayer();
+      }
+    });
   }
 
   respawnPlayer() {
+    this.respawnPending = false;
     this.tweens.killTweensOf(this.player);
 
     this.player.setActive(true).setVisible(true);
@@ -600,20 +627,10 @@ export default class GameScene extends Phaser.Scene {
     this.player.setAngle(0);
     this.player.setAlpha(1);
     this.player.setDepth(10);
-    this.invulnerableUntil = this.time.now + 2000;
 
-    this.tweens.add({
-      targets: this.player,
-      alpha: { from: 0.3, to: 1 },
-      duration: 150,
-      yoyo: true,
-      repeat: 7,
-      onComplete: () => {
-        if (this.player.active) {
-          this.player.setAlpha(1);
-        }
-      },
-    });
+    if (this.time.now >= this.shieldUntil) {
+      this.player.clearTint();
+    }
   }
 
   turnEnemyAfterCollision(enemy) {
@@ -663,12 +680,22 @@ export default class GameScene extends Phaser.Scene {
     this.player.setVelocity(0, 0);
     this.tweens.pauseAll();
 
+    const isLastLevel = this.levelIndex >= LEVELS.length - 1;
+    const levelComplete = won && !isLastLevel;
+
     this.time.delayedCall(700, () => {
       this.scene.start('ResultScene', {
         won,
         reason,
         score: this.score,
         highScore: this.highScore,
+        levelIndex: this.levelIndex,
+        nextLevelIndex: Math.min(
+          this.levelIndex + 1,
+          LEVELS.length - 1
+        ),
+        levelComplete,
+        restartScore: this.levelStartScore,
       });
     });
   }
@@ -699,6 +726,7 @@ export default class GameScene extends Phaser.Scene {
     this.tripleUntil = 0;
     this.gameOver = false;
     this.isPaused = false;
+    this.respawnPending = false;
   }
 
   createExplosion(x, y, tint) {
@@ -766,6 +794,10 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updatePlayerMovement() {
+    this.player.setActive(true).setVisible(true);
+    this.player.body.enable = true;
+    this.player.body.moves = true;
+
     const { up, down, left, right, w, a, s, d } = this.keys;
     const upPressed = up.isDown || w.isDown;
     const downPressed = down.isDown || s.isDown;

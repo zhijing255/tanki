@@ -104,6 +104,10 @@ export default class MenuScene extends Phaser.Scene {
   }
 
   startGame() {
-    this.scene.start('GameScene');
+    this.scene.start('GameScene', {
+      levelIndex: 0,
+      score: 0,
+      levelStartScore: 0,
+    });
   }
 }
