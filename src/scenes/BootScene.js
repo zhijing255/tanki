@@ -8,6 +8,9 @@ export default class BootScene extends Phaser.Scene {
   create() {
     this.createTankTexture('player-tank', '#f59e0b', '#fbbf24', '#fef3c7');
     this.createTankTexture('enemy-tank', '#b91c1c', '#ef4444', '#fee2e2');
+    this.createTankTexture('enemy-fast', '#c2410c', '#f97316', '#ffedd5');
+    this.createTankTexture('enemy-heavy', '#5b21b6', '#a78bfa', '#f5f3ff');
+    this.createTankTexture('enemy-sniper', '#075985', '#38bdf8', '#f0f9ff');
     this.createWallTexture('brick', '#9a3412', '#c2410c');
     this.createWallTexture('steel', '#64748b', '#cbd5e1');
     this.createBaseTexture();

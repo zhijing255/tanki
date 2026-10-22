@@ -131,6 +131,7 @@ export const LEVELS = [
       initialFireDelay: [3000, 5000],
       fireDelay: [1300, 2300],
     },
+    typeWeights: { normal: 0.5, fast: 0.2, heavy: 0.15, sniper: 0.15 },
   },
   {
     name: '钢铁走廊',
@@ -143,6 +144,7 @@ export const LEVELS = [
       initialFireDelay: [2400, 4000],
       fireDelay: [950, 1700],
     },
+    typeWeights: { normal: 0.4, fast: 0.25, heavy: 0.2, sniper: 0.15 },
   },
   {
     name: '核心要塞',
@@ -155,6 +157,7 @@ export const LEVELS = [
       initialFireDelay: [2000, 3400],
       fireDelay: [750, 1400],
     },
+    typeWeights: { normal: 0.3, fast: 0.3, heavy: 0.2, sniper: 0.2 },
   },
 ];
 

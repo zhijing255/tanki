@@ -14,6 +14,11 @@ import {
 import Bullet from '../entities/Bullet.js';
 import { saveHighScore } from '../config/highScore.js';
 import EnemyTank from '../entities/EnemyTank.js';
+import {
+  ENEMY_TYPES,
+  chooseEnemyType,
+  scaleDelayRange,
+} from '../config/enemyTypes.js';
 
 const PLAYER_SPEED = 160;
 const MAX_PLAYER_BULLETS = 1;
@@ -284,9 +289,18 @@ export default class GameScene extends Phaser.Scene {
     this.powerupHud = this.add
       .text(16, 40, '道具: 无', {
         fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
-        fontSize: '14px',
+        fontSize: '13px',
         color: '#67e8f9',
       })
+      .setDepth(30);
+
+    this.enemyLegend = this.add
+      .text(GAME_WIDTH - 16, 40, '普通 红　快速 橙　重装 紫　狙击 蓝', {
+        fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+        fontSize: '13px',
+        color: '#94a3b8',
+      })
+      .setOrigin(1, 0)
       .setDepth(30);
 
     this.pauseOverlay = this.add
@@ -438,13 +452,33 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
-    const enemy = this.enemies.create(point.x, point.y, 'enemy-tank');
+    const type = chooseEnemyType(this.levelConfig.typeWeights);
+    const baseEnemyConfig = this.levelConfig.enemy;
+    const enemyConfig = {
+      speed: Math.round(baseEnemyConfig.speed * type.speedMultiplier),
+      turnDelay: baseEnemyConfig.turnDelay,
+      initialFireDelay: scaleDelayRange(
+        baseEnemyConfig.initialFireDelay,
+        type.fireDelayMultiplier
+      ),
+      fireDelay: scaleDelayRange(
+        baseEnemyConfig.fireDelay,
+        type.fireDelayMultiplier
+      ),
+    };
+    const enemy = this.enemies.create(point.x, point.y, type.texture);
 
     if (!enemy) {
       return;
     }
 
-    enemy.spawn(point.x, point.y, this.time.now, this.levelConfig.enemy);
+    enemy.spawn(
+      point.x,
+      point.y,
+      this.time.now,
+      enemyConfig,
+      type
+    );
     point.used = true;
     point.marker.setVisible(false);
     this.enemiesToSpawn -= 1;
@@ -472,12 +506,28 @@ export default class GameScene extends Phaser.Scene {
     this.activePlayerBullets += 1;
   }
 
+  getSniperAngle(enemy) {
+    const deltaX = this.player.x - enemy.x;
+    const deltaY = this.player.y - enemy.y;
+
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      return deltaX > 0 ? 90 : -90;
+    }
+
+    return deltaY > 0 ? 180 : 0;
+  }
+
   fireEnemyBullet(enemy) {
     if (this.gameOver || this.isPaused || !enemy.active) {
       return;
     }
 
-    const angle = enemy.angle;
+    let angle = enemy.angle;
+
+    if (enemy.enemyType === 'sniper') {
+      angle = this.getSniperAngle(enemy);
+      enemy.setAngle(angle);
+    }
     const x = enemy.x + Math.cos(Phaser.Math.DegToRad(angle - 90)) * 20;
     const y = enemy.y + Math.sin(Phaser.Math.DegToRad(angle - 90)) * 20;
     const bullet = this.enemyBullets.get(x, y, 'bullet');
@@ -544,6 +594,13 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.destroyBullet(bullet);
+
+    if (!enemy.takeHit()) {
+      this.addScore(50);
+      this.createExplosion(enemy.x, enemy.y, 0xf8fafc);
+      return;
+    }
+
     this.destroyEnemy(enemy);
   }
 
@@ -558,7 +615,7 @@ export default class GameScene extends Phaser.Scene {
     this.createExplosion(enemy.x, enemy.y, 0xef4444);
     enemy.disableBody(true, true);
     this.enemiesDefeated += 1;
-    this.addScore(100);
+    this.addScore(enemy.scoreValue ?? 100);
 
     if (this.enemiesDefeated < this.enemyTotal) {
       this.spawnPowerUp(dropX, dropY);

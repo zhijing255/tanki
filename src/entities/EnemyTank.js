@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { ENEMY_TYPES } from '../config/enemyTypes.js';
 
 const DIRECTIONS = ['up', 'down', 'left', 'right'];
 
@@ -15,7 +16,7 @@ export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
     this.fireDelay = [1300, 2300];
   }
 
-  spawn(x, y, time, config = {}) {
+  spawn(x, y, time, config = {}, typeConfig = ENEMY_TYPES.normal) {
     this.setActive(true).setVisible(true);
     this.setDepth(9);
     this.body.enable = true;
@@ -27,6 +28,10 @@ export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
     this.initialFireDelay = config.initialFireDelay ?? this.initialFireDelay;
     this.fireDelay = config.fireDelay ?? this.fireDelay;
     this.fireRequested = false;
+    this.enemyType = typeConfig.id;
+    this.health = typeConfig.health;
+    this.scoreValue = typeConfig.score;
+    this.setAlpha(1);
     this.chooseDirection(time, false);
     this.nextFireTime = time + Phaser.Math.Between(...this.initialFireDelay);
     return this;
@@ -99,5 +104,18 @@ export default class EnemyTank extends Phaser.Physics.Arcade.Sprite {
       this.fireRequested = true;
       this.nextFireTime = time + Phaser.Math.Between(...this.fireDelay);
     }
+  }
+
+  takeHit() {
+    this.health -= 1;
+    this.setAlpha(0.45);
+
+    this.scene.time.delayedCall(80, () => {
+      if (this.active) {
+        this.setAlpha(1);
+      }
+    });
+
+    return this.health <= 0;
   }
 }
