@@ -3,3 +3,9 @@ dist/
 .npm-cache/
 *.log
 .DS_Store
+# Local build tools and generated APK
+.jdk21/
+.jdk21.zip
+.build-tools35/
+.build-tools35.zip
+tank-battle-debug.apk

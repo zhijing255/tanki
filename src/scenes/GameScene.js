@@ -64,7 +64,20 @@ export default class GameScene extends Phaser.Scene {
     this.baseAlive = true;
     this.gameOver = false;
     this.isPaused = false;
+    this.introActive = false;
     this.invulnerableUntil = 0;
+    this.touchControlsEnabled =
+      new URLSearchParams(globalThis.location?.search ?? '').get('touch') ===
+        '1' ||
+      Boolean(this.sys.game.device?.input?.touch) ||
+      (globalThis.navigator?.maxTouchPoints ?? 0) > 0;
+    this.touchInput = {
+      up: false,
+      down: false,
+      left: false,
+      right: false,
+      fire: false,
+    };
     this.aiReadyAt = this.time.now + 6000;
     this.siegeSlotIndex = 0;
     this.respawnPending = false;
@@ -99,6 +112,7 @@ export default class GameScene extends Phaser.Scene {
     this.createCollisions();
     this.createInput();
     this.createHud();
+    this.createTouchControls();
 
     for (let index = 0; index < this.maxActiveEnemies; index += 1) {
       this.spawnEnemy();
@@ -113,6 +127,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.physics.world.on('worldbounds', this.handleWorldBounds, this);
     this.events.once('shutdown', this.handleShutdown, this);
+    this.showLevelIntro();
   }
 
   createBackground() {
@@ -279,62 +294,426 @@ export default class GameScene extends Phaser.Scene {
     );
 
 
+
   }
 
-  createHud() {
-    this.hudText = this.add
-      .text(16, 16, '', {
+  createTouchControls() {
+    if (!this.touchControlsEnabled) {
+      return;
+    }
+
+    this.input.addPointer(3);
+    this.touchControls = [];
+
+    const dpadBackground = this.add
+      .circle(95, 525, 78, 0x0f172a, 0.55)
+      .setDepth(39);
+    this.touchControls.push({
+      background: dpadBackground,
+      text: null,
+      isInput: false,
+    });
+
+    const upButton = this.createTouchControl(
+      95,
+      462,
+      29,
+      '▲',
+      0x334155,
+      () => {
+        this.touchInput.up = true;
+      },
+      () => {
+        this.touchInput.up = false;
+      }
+    );
+    const downButton = this.createTouchControl(
+      95,
+      588,
+      29,
+      '▼',
+      0x334155,
+      () => {
+        this.touchInput.down = true;
+      },
+      () => {
+        this.touchInput.down = false;
+      }
+    );
+    const leftButton = this.createTouchControl(
+      32,
+      525,
+      29,
+      '◀',
+      0x334155,
+      () => {
+        this.touchInput.left = true;
+      },
+      () => {
+        this.touchInput.left = false;
+      }
+    );
+    const rightButton = this.createTouchControl(
+      158,
+      525,
+      29,
+      '▶',
+      0x334155,
+      () => {
+        this.touchInput.right = true;
+      },
+      () => {
+        this.touchInput.right = false;
+      }
+    );
+    const fireButton = this.createTouchControl(
+      710,
+      540,
+      45,
+      '开火',
+      0xdc2626,
+      () => {
+        this.touchInput.fire = true;
+      },
+      () => {
+        this.touchInput.fire = false;
+      },
+      21
+    );
+    const pauseButton = this.createTouchControl(
+      760,
+      32,
+      22,
+      'Ⅱ',
+      0x475569,
+      () => this.togglePause(),
+      () => {},
+      18
+    );
+
+    this.touchControls.push(
+      upButton,
+      downButton,
+      leftButton,
+      rightButton,
+      fireButton,
+      pauseButton
+    );
+    this.setTouchControlsVisible(false);
+  }
+
+  createTouchControl(
+    x,
+    y,
+    radius,
+    label,
+    color,
+    onDown,
+    onUp,
+    fontSize = 28
+  ) {
+    const background = this.add
+      .circle(x, y, radius, color, 0.72)
+      .setDepth(40)
+      .setStrokeStyle(2, 0xf8fafc, 0.55)
+      .setInteractive({ useHandCursor: true });
+
+    const textObject = this.add
+      .text(x, y, label, {
         fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
-        fontSize: '16px',
-        color: '#cbd5e1',
+        fontSize: `${fontSize}px`,
+        fontStyle: 'bold',
+        color: '#f8fafc',
+      })
+      .setOrigin(0.5)
+      .setDepth(41)
+      .setAlpha(0.9);
+
+    background.on('pointerdown', () => {
+      background.setFillStyle(0xf8fafc, 0.4);
+      onDown();
+    });
+
+    const release = () => {
+      background.setFillStyle(color, 0.72);
+      onUp();
+    };
+
+    background.on('pointerup', release);
+    background.on('pointerout', release);
+    background.on('pointerupoutside', release);
+
+    return { background, text: textObject, isInput: true };
+  }
+
+  setTouchControlsVisible(visible) {
+    if (!visible) {
+      this.touchInput = {
+        up: false,
+        down: false,
+        left: false,
+        right: false,
+        fire: false,
+      };
+    }
+
+    (this.touchControls ?? []).forEach((control) => {
+      control.background.setVisible(visible);
+
+      if (control.background.input) {
+        control.background.input.enabled = visible;
+      }
+
+      if (control.text) {
+        control.text.setVisible(visible);
+      }
+    });
+  }
+  createHud() {
+    this.add
+      .rectangle(0, 0, GAME_WIDTH, HUD_HEIGHT, 0x0f172a)
+      .setOrigin(0)
+      .setDepth(29);
+
+    const hudStyle = {
+      fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+      fontSize: '15px',
+      color: '#e2e8f0',
+    };
+
+    this.levelText = this.add
+      .text(16, 8, '', hudStyle)
+      .setDepth(30);
+    this.scoreText = this.add
+      .text(16, 34, '', {
+        ...hudStyle,
+        color: '#fbbf24',
+        fontStyle: 'bold',
       })
       .setDepth(30);
+    this.enemyText = this.add
+      .text(145, 8, '', hudStyle)
+      .setDepth(30);
+    this.lifeText = this.add
+      .text(145, 34, '', {
+        ...hudStyle,
+        color: '#fca5a5',
+      })
+      .setDepth(30);
+    this.baseText = this.add
+      .text(300, 8, '', hudStyle)
+      .setDepth(30);
 
+    this.baseBarBackground = this.add
+      .rectangle(300, 36, 130, 14, 0x334155)
+      .setOrigin(0)
+      .setDepth(30);
+    this.baseBarFill = this.add
+      .rectangle(302, 38, 126, 10, 0x22c55e)
+      .setOrigin(0)
+      .setDepth(31);
+
+    this.bulletText = this.add
+      .text(460, 8, '', hudStyle)
+      .setDepth(30);
     this.powerupHud = this.add
-      .text(16, 40, '道具: 无', {
-        fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+      .text(460, 34, '', {
+        ...hudStyle,
         fontSize: '13px',
         color: '#67e8f9',
       })
       .setDepth(30);
 
     this.enemyLegend = this.add
-      .text(GAME_WIDTH - 16, 40, '普通 红　快速 橙　重装 紫　狙击 蓝', {
+      .text(GAME_WIDTH - 16, 50, '普通 红　快速 橙　重装 紫　狙击 蓝', {
         fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
-        fontSize: '13px',
+        fontSize: '11px',
         color: '#94a3b8',
       })
       .setOrigin(1, 0)
       .setDepth(30);
 
     this.pauseOverlay = this.add
-      .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x020617, 0.72)
+      .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x020617, 0.78)
       .setOrigin(0)
       .setDepth(50)
       .setVisible(false);
 
     this.pauseText = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, '已暂停\n按 P 继续', {
-        align: 'center',
+      .text(GAME_WIDTH / 2, 230, '游戏暂停', {
         fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
-        fontSize: '36px',
+        fontSize: '42px',
         fontStyle: 'bold',
         color: '#f9fafb',
       })
       .setOrigin(0.5)
       .setDepth(51)
       .setVisible(false);
+
+    this.pauseResumeButton = this.createPauseButton(
+      '继续游戏',
+      340,
+      0x22c55e,
+      () => this.togglePause()
+    );
+    this.pauseRestartButton = this.createPauseButton(
+      '重新开始本关',
+      414,
+      0xf59e0b,
+      () => this.restartCurrentLevel()
+    );
+    this.pauseMenuButton = this.createPauseButton(
+      '返回菜单',
+      488,
+      0xef4444,
+      () => this.scene.start('MenuScene')
+    );
+    this.setPauseButtonsVisible(false);
   }
 
-  addScore(points) {
+  createPauseButton(label, y, color, callback) {
+    const background = this.add
+      .rectangle(GAME_WIDTH / 2, y, 240, 52, color)
+      .setStrokeStyle(3, 0xf8fafc)
+      .setDepth(51)
+      .setVisible(false)
+      .setInteractive({ useHandCursor: true });
+
+    const textObject = this.add
+      .text(GAME_WIDTH / 2, y, label, {
+        fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+        fontSize: '21px',
+        fontStyle: 'bold',
+        color: '#111827',
+      })
+      .setOrigin(0.5)
+      .setDepth(52)
+      .setVisible(false);
+
+    background.on('pointerover', () => background.setAlpha(0.85));
+    background.on('pointerout', () => background.setAlpha(1));
+    background.on('pointerdown', callback);
+
+    return { background, text: textObject };
+  }
+
+  setPauseButtonsVisible(visible) {
+    [
+      this.pauseResumeButton,
+      this.pauseRestartButton,
+      this.pauseMenuButton,
+    ].forEach((button) => {
+      button.background.setVisible(visible);
+      button.text.setVisible(visible);
+
+      if (button.background.input) {
+        button.background.input.enabled = visible;
+      }
+    });
+  }
+
+  restartCurrentLevel() {
+    this.scene.start('GameScene', {
+      levelIndex: this.levelIndex,
+      score: this.levelStartScore,
+      levelStartScore: this.levelStartScore,
+    });
+  }
+
+  showLevelIntro() {
+    if (this.gameOver) {
+      return;
+    }
+
+    this.introActive = true;
+    this.isPaused = true;
+    this.physics.pause();
+    this.setTouchControlsVisible(false);
+
+    const overlay = this.add
+      .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x020617, 0.88)
+      .setOrigin(0)
+      .setDepth(60);
+    const levelTitle = this.add
+      .text(GAME_WIDTH / 2, 258, `第 ${this.levelIndex + 1} 关`, {
+        fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+        fontSize: '58px',
+        fontStyle: 'bold',
+        color: '#fbbf24',
+      })
+      .setOrigin(0.5)
+      .setDepth(61);
+    const levelName = this.add
+      .text(GAME_WIDTH / 2, 330, this.levelConfig.name, {
+        fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+        fontSize: '30px',
+        color: '#f8fafc',
+      })
+      .setOrigin(0.5)
+      .setDepth(61);
+    const readyText = this.add
+      .text(GAME_WIDTH / 2, 390, '准备战斗', {
+        fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+        fontSize: '20px',
+        color: '#94a3b8',
+      })
+      .setOrigin(0.5)
+      .setDepth(61);
+
+    const targets = [overlay, levelTitle, levelName, readyText];
+
+    this.tweens.add({
+      targets,
+      alpha: 0,
+      delay: 850,
+      duration: 350,
+      onComplete: () => {
+        targets.forEach((target) => target.destroy());
+
+        if (!this.gameOver) {
+          this.introActive = false;
+          this.isPaused = false;
+          this.physics.resume();
+          this.setTouchControlsVisible(this.touchControlsEnabled);
+        }
+      },
+    });
+  }
+
+  addScore(points, x, y) {
     this.score += points;
+
+    if (!Number.isFinite(x) || !Number.isFinite(y) || points <= 0) {
+      return;
+    }
+
+    const floatingText = this.add
+      .text(x, y - 24, `+${points}`, {
+        fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+        fontSize: '17px',
+        fontStyle: 'bold',
+        color: '#fde68a',
+        stroke: '#111827',
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(45);
+
+    this.tweens.add({
+      targets: floatingText,
+      y: floatingText.y - 34,
+      alpha: 0,
+      duration: 700,
+      ease: 'Quad.easeOut',
+      onComplete: () => floatingText.destroy(),
+    });
   }
 
   updateHud(time = 0) {
     const remainingEnemies = this.enemyTotal - this.enemiesDefeated;
-    const baseStatus = this.baseAlive
-      ? `基地: ${this.baseHealth}/${this.maxBaseHealth}`
-      : '基地: 失守';
+    const baseRatio = this.maxBaseHealth > 0
+      ? this.baseHealth / this.maxBaseHealth
+      : 0;
     const activeEffects = [];
 
     if (this.shieldUntil > time) {
@@ -349,24 +728,36 @@ export default class GameScene extends Phaser.Scene {
       activeEffects.push(`三连发 ${Math.ceil((this.tripleUntil - time) / 1000)}s`);
     }
 
-    this.hudText.setText(
-      `关卡: ${this.levelIndex + 1}/${LEVELS.length}　分数: ${this.score}　敌人数: ${remainingEnemies}　生命: ${this.lives}　${baseStatus}　子弹: ${this.activePlayerBullets}/${this.playerBulletLimit}`
+    this.levelText.setText(
+      `关卡 ${this.levelIndex + 1}/${LEVELS.length}`
+    );
+    this.scoreText.setText(`分数 ${this.score}`);
+    this.enemyText.setText(`敌人 ${remainingEnemies}`);
+    this.lifeText.setText(`生命 ${this.lives}`);
+    this.baseText.setText(
+      this.baseAlive
+        ? `基地 ${this.baseHealth}/${this.maxBaseHealth}`
+        : '基地 失守'
+    );
+    this.bulletText.setText(
+      `子弹 ${this.activePlayerBullets}/${this.playerBulletLimit}`
+    );
+    this.powerupHud.setText(
+      activeEffects.length > 0 ? activeEffects.join('　') : '道具 无'
     );
 
-    if (this.baseHealth === 1) {
-      this.hudText.setColor('#f87171');
+    this.baseBarFill.width = Math.max(0, 126 * baseRatio);
+
+    if (this.baseHealth <= 0 || this.baseHealth === 1) {
+      this.baseBarFill.setFillStyle(0xef4444);
     } else if (
       this.baseHealth <= Math.ceil(this.maxBaseHealth / 2)
     ) {
-      this.hudText.setColor('#fbbf24');
+      this.baseBarFill.setFillStyle(0xf59e0b);
     } else {
-      this.hudText.setColor('#cbd5e1');
+      this.baseBarFill.setFillStyle(0x22c55e);
     }
-    this.powerupHud.setText(
-      activeEffects.length > 0 ? activeEffects.join('　') : '道具: 无'
-    );
   }
-
   spawnPowerUp(x, y) {
     if (this.gameOver || Math.random() > POWERUP_DROP_CHANCE) {
       return;
@@ -409,7 +800,7 @@ export default class GameScene extends Phaser.Scene {
     this.tweens.killTweensOf(powerup);
     powerup.disableBody(true, true);
     this.createExplosion(player.x, player.y, 0x67e8f9);
-    this.addScore(50);
+    this.addScore(50, player.x, player.y);
 
     if (texture === 'powerup-shield') {
       this.shieldUntil = this.time.now + POWERUP_DURATION;
@@ -611,7 +1002,7 @@ export default class GameScene extends Phaser.Scene {
       wall.destroy();
 
       if (destroyedByPlayer) {
-        this.addScore(10);
+        this.addScore(10, wall.x, wall.y);
       }
     }
 
@@ -674,7 +1065,7 @@ export default class GameScene extends Phaser.Scene {
     this.destroyBullet(bullet);
 
     if (!enemy.takeHit()) {
-      this.addScore(50);
+      this.addScore(50, enemy.x, enemy.y);
       this.createExplosion(enemy.x, enemy.y, 0xf8fafc);
       return;
     }
@@ -693,7 +1084,7 @@ export default class GameScene extends Phaser.Scene {
     this.createExplosion(enemy.x, enemy.y, 0xef4444);
     enemy.disableBody(true, true);
     this.enemiesDefeated += 1;
-    this.addScore(enemy.scoreValue ?? 100);
+    this.addScore(enemy.scoreValue ?? 100, dropX, dropY);
 
     if (this.enemiesDefeated < this.enemyTotal) {
       this.spawnPowerUp(dropX, dropY);
@@ -1202,7 +1593,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   togglePause() {
-    if (this.gameOver) {
+    if (this.gameOver || this.introActive) {
       return;
     }
 
@@ -1215,6 +1606,8 @@ export default class GameScene extends Phaser.Scene {
       this.anims.pauseAll();
       this.pauseOverlay.setVisible(true);
       this.pauseText.setVisible(true);
+      this.setPauseButtonsVisible(true);
+      this.setTouchControlsVisible(false);
       return;
     }
 
@@ -1224,6 +1617,8 @@ export default class GameScene extends Phaser.Scene {
     this.anims.resumeAll();
     this.pauseOverlay.setVisible(false);
     this.pauseText.setVisible(false);
+    this.setPauseButtonsVisible(false);
+    this.setTouchControlsVisible(this.touchControlsEnabled);
   }
 
   endGame(won, reason) {
@@ -1283,6 +1678,7 @@ export default class GameScene extends Phaser.Scene {
     this.tripleUntil = 0;
     this.gameOver = false;
     this.isPaused = false;
+    this.introActive = false;
     this.respawnPending = false;
   }
 
@@ -1326,8 +1722,11 @@ export default class GameScene extends Phaser.Scene {
 
     this.activePlayerBullets = this.playerBullets.countActive(true);
 
+    const firePressed =
+      this.keys.space.isDown || this.touchInput.fire;
+
     if (
-      this.keys.space.isDown &&
+      firePressed &&
       time - this.lastPlayerFireTime >= PLAYER_FIRE_COOLDOWN
     ) {
       this.firePlayerBullet();
@@ -1356,10 +1755,10 @@ export default class GameScene extends Phaser.Scene {
     this.player.body.moves = true;
 
     const { up, down, left, right, w, a, s, d } = this.keys;
-    const upPressed = up.isDown || w.isDown;
-    const downPressed = down.isDown || s.isDown;
-    const leftPressed = left.isDown || a.isDown;
-    const rightPressed = right.isDown || d.isDown;
+    const upPressed = up.isDown || w.isDown || this.touchInput.up;
+    const downPressed = down.isDown || s.isDown || this.touchInput.down;
+    const leftPressed = left.isDown || a.isDown || this.touchInput.left;
+    const rightPressed = right.isDown || d.isDown || this.touchInput.right;
 
     if (upPressed) {
       this.player.setVelocity(0, -this.playerSpeed);

@@ -6,9 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:apk": "npm run build && npx cap sync android && cd android && set GRADLE_USER_HOME=D:/AndroidStudio/gradle&& set JAVA_HOME=D:/AICoding/codex_projects/tanki/.jdk21/jdk-21.0.12.1+1&& set ANDROID_HOME=D:/AndroidSDK/sdk&& set ANDROID_SDK_ROOT=D:/AndroidSDK/sdk&& gradlew.bat assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
     "phaser": "^3.90.0"
   },
   "devDependencies": {
