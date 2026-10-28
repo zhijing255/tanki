@@ -244,6 +244,13 @@ export default class GameScene extends Phaser.Scene {
       null,
       this
     );
+    this.physics.add.collider(
+      this.player,
+      this.enemies,
+      this.handlePlayerEnemyCollision,
+      null,
+      this
+    );
 
     this.physics.add.collider(
       this.enemies,
@@ -1099,30 +1106,48 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  handlePlayerEnemyCollision(player, enemy) {
+    if (this.gameOver || !enemy.active) {
+      return;
+    }
+
+    enemy.turnAfterCollision(this.time.now);
+    this.damagePlayer('玩家与敌人坦克相撞', player.x, player.y);
+  }
+
   hitPlayer(bullet, player) {
     if (!bullet.active || this.gameOver) {
       return;
     }
 
     this.destroyBullet(bullet);
+    this.damagePlayer('玩家生命耗尽', player.x, player.y);
+  }
+
+  damagePlayer(reason, x, y) {
+    if (this.gameOver || this.respawnPending) {
+      return false;
+    }
 
     if (this.time.now < this.shieldUntil) {
-      this.createExplosion(player.x, player.y, 0x67e8f9);
-      return;
+      this.createExplosion(x, y, 0x67e8f9);
+      return false;
     }
 
     if (this.time.now < this.invulnerableUntil) {
-      return;
+      return false;
     }
 
+    this.createExplosion(x, y, 0xf97316);
     this.lives -= 1;
 
     if (this.lives <= 0) {
-      this.endGame(false, '玩家生命耗尽');
-      return;
+      this.endGame(false, reason);
+      return true;
     }
 
     this.schedulePlayerRespawn();
+    return true;
   }
 
   schedulePlayerRespawn() {
